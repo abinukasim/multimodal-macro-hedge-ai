@@ -1,0 +1,7 @@
+feedparser
+beautifulsoup4
+lxml
+dateparser
+tqdm
+requests
+pandas
