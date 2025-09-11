@@ -197,7 +197,7 @@ streamlit run app/streamlit_app.py
 * **Anchored isotonic calibration** : fit on a pre-defined *calibration window* (e.g., < 2023-01-01), apply to the live period only (no leakage).
 * **Position sizing:** probabilistic
 
-  ![1757615921972](image/README/1757615921972.png)
+  ![1757615921972](image/README/1757615921972.png)pos_t = clip(((p_t-0.5)/scale), 0, 1)
   with scale ≈  **0.06** ; optional binary/hysteresis supported.
 * **Transaction costs:** default **1 bp** per trade; configurable.
 
