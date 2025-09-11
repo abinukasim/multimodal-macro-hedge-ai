@@ -1,121 +1,175 @@
 # Macro Multimodal Hedge AI
 
-*A research prototype that fuses financial **text** + **market time-series** to forecast next-day S&P 500 direction and backtest trading rules with costs. Ships with a live Streamlit dashboard and a daily automation pipeline.*
+A compact research project that fuses **financial text** (Fed/BLS/BEA) with **market time-series** to forecast next-day S&P 500 direction, backtest cost-aware strategies, and visualize results in a Streamlit dashboard.
+
+> Research only. Not investment advice.
 
 ---
 
-## TL;DR
+## What it does
 
-- **Modalities:** Official macro texts (Fed statements/minutes & speeches, BLS CPI & NFP notes, BEA PCE) + market features (SPY, VIX, 10Y, 3M, term-structure, returns, vols).
-- **Model:** FinBERT sentence embeddings aggregated daily → concatenated with engineered time-series features → **XGBoost** classifier → probability → **anchored isotonic calibration** → position sizing.
-- **Backtest (net of 1bp costs)** — recent runs:
-  - **Time-only:** Sharpe ≈ **0.59**, MaxDD ≈ **−0.27**
-  - **Fused (biweekly refit, prob sizing, anchored calibration):** Sharpe ≈ **0.74–0.76**, MaxDD ≈ **−0.23**
-- **App:** `/app/streamlit_app.py` shows equity curves, metrics, and latest signals.
-- **Ops:** `scripts/daily_refresh.sh` fetches new text, rebuilds features, retrains, calibrates, and refreshes artifacts (cron/launchd examples included).
-
-> ⚠️ Research only. Not investment advice. Historical performance ≠ future results.
+- Scrapes recent **official macro text** via RSS (Fed statements & speeches, BLS CPI & NFP notes, BEA PCE).
+- Builds **FinBERT** sentiment features and joins them with **market features** (SPY, VIX, 10Y, 3M, term spread, lags, vols).
+- Trains an **XGBoost** classifier in a **walk-forward** loop to predict P(up tomorrow).
+- Applies **anchored isotonic calibration** and converts probabilities to positions (prob-scaled or binary).
+- Backtests with **transaction costs** and shows curves/metrics in a dashboard.
 
 ---
 
-## Why this project
+## Repo layout
 
-Macro markets react to *words* (policy guidance, data releases) and *numbers* (vol, term spread). This project builds a minimal, pragmatic pipeline that fuses both streams, emphasizes **walk-forward validation**, and reports **cost-aware** backtests you can interrogate live in a dashboard.
 
----
-
-## Repo structure
 
 multimodal-macro-hedge-ai/
 
 ├─ app/
 
-│  └─ streamlit_app.py         # Dashboard (equity curves, metrics, latest signals)
+│  └─ streamlit_app.py                # Streamlit dashboard: equity curves, metrics, latest signals
 
-├─ configs/                    # Optional config files
+├─ configs/
 
-├─ data/
+│  └─ experiment.yaml                 # (optional) example config / notes
 
-│  ├─ raw/                     # Ingested text csvs (ignored by git)
+├─ data/                              # GENERATED ARTIFACTS (git-ignored except .gitkeep)
 
-│  └─ processed/               # Parquet artifacts (ignored by git)
+│  ├─ raw/
 
-├─ notebooks/                  # Scratch/EDA
+│  │  ├─ headlines.csv                # merged official-text headlines (generated)
+
+│  │  └─ .gitkeep
+
+│  └─ processed/
+
+│     ├─ market.csv                   # market panel (SPY/VIX/yields) with features (generated)
+
+│     ├─ text_features.parquet        # daily FinBERT features (generated)
+
+│     ├─ fusion_dataset.parquet       # joined table: time-series + text features (generated)
+
+│     ├─ wf_time_only.parquet         # walk-forward predictions (time-only model) (generated)
+
+│     ├─ wf_fused.parquet             # walk-forward predictions (fused model) (generated)
+
+│     ├─ wf_fused_cal.parquet         # calibrated live-window predictions (generated)
+
+│     ├─ curve_time_only.parquet      # equity curve (time-only) net of costs (generated)
+
+│     ├─ curve_fused.parquet          # equity curve (fused) net of costs (generated)
+
+│     └─ sweep_results.csv            # threshold/prob-scale sweep results (generated)
+
+├─ notebooks/
+
+│  └─ ...                             # exploratory notebooks / EDA
 
 ├─ scripts/
 
-│  ├─ bootstrap_data.py        # Fetch market data (offline fallback)
+│  ├─ bootstrap_data.py               # fetch market data (SPY/VIX/10Y/3M) with offline fallback
 
-│  ├─ build_text_features.py   # FinBERT embeddings → daily features
+│  ├─ fetch_official_text.py          # scrapers for Fed/BLS/BEA RSS; saves CSVs
 
-│  ├─ build_fusion_dataset.py  # Join text + time features → model table
+│  ├─ ingest_text_sources.py          # merge text CSVs → data/raw/headlines.csv
 
-│  ├─ train_baseline.py        # Walk-forward training & backtest
+│  ├─ build_text_features.py          # FinBERT embeddings → daily sentiment features
 
-│  ├─ calibrate_probs.py       # Anchored isotonic calibration + curve
+│  ├─ build_fusion_dataset.py         # join text + time-series into model table
 
-│  ├─ fetch_official_text.py   # RSS scrapers for Fed/BLS/BEA
+│  ├─ train_baseline.py               # walk-forward training/backtest (XGBoost)
 
-│  ├─ ingest_text_sources.py   # Merge multiple text csvs → headlines.csv
+│  ├─ calibrate_probs.py              # anchored isotonic calibration + curve export
 
-│  └─ daily_refresh.sh         # End-to-end refresh pipeline (cron-safe)
+│  ├─ sweep_thresholds.py             # grid search over thresholds / prob scales
+
+│  ├─ run_day1_quicktest.py           # smoke test: data bootstrap sanity
+
+│  ├─ run_day2_quicktest.py           # smoke test: text features + fusion table
+
+│  ├─ run_day3_quicktest.py           # smoke test: walk-forward outputs
+
+│  └─ daily_refresh.sh                # cron-safe end-to-end refresh pipeline
 
 ├─ src/
 
-│  ├─ backtest/                # PnL curve, turnover/costs, metrics
+│  ├─ backtest/
 
-│  ├─ data/                    # Market fetchers/parsers
+│  │  ├─  **init** .py
 
-│  ├─ features/                # Time-series feature engineering
+│  │  └─ backtest.py                  # pnl_curve, turnover/costs, performance metrics
 
-│  ├─ models/                  # Walk-forward utilities (XGBoost)
+│  ├─ data/
 
-│  └─ utils/                   # Helpers
+│  │  ├─  **init** .py
+
+│  │  └─ fetch_market.py              # yfinance/stooq helpers; merge_market(), get_prices()
+
+│  ├─ features/
+
+│  │  ├─  **init** .py
+
+│  │  └─ ts_features.py               # returns, rolling vol, term spread, lags, z-scores
+
+│  ├─ models/
+
+│  │  ├─  **init** .py
+
+│  │  └─ walk_forward.py              # rolling fit/predict, refit cadence, model wrapper
+
+│  ├─ nlp/                            # (if present) text embedding helpers
+
+│  │  ├─  **init** .py
+
+│  │  └─ finbert.py                   # FinBERT utilities (optional)
+
+│  └─ utils/
+
+│     ├─  **init** .py
+
+│     └─ io.py                        # small I/O helpers (optional)
+
+├─ .gitignore                         # ignores .venv/, logs, data/, mytexts/, etc.
 
 ├─ requirements.txt
 
 └─ README.md
 
 
-
----
 ## Quick start
 
 ```bash
-# 1) create & activate venv
+# 1) setup
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip wheel
 pip install -r requirements.txt
 
-# 2) bootstrap market data (falls back to offline synthetic if remote fails)
+# 2) market data (has offline fallback)
 python -m scripts.bootstrap_data
 
-# 3) fetch recent official texts (RSS) and build features
+# 3) get official text and build text features
 python -m scripts.fetch_official_text --since 2018-01-01 --outdir mytexts
 python -m scripts.ingest_text_sources mytexts/*.csv --out data/raw/headlines.csv
 python -m scripts.build_text_features --input data/raw/headlines.csv
 
-# 4) fuse modalities and train (biweekly refits worked best in tests)
+# 4) fuse modalities and train (walk-forward, refit every 10 days)
 python -m scripts.build_fusion_dataset
 python -m scripts.train_baseline --min-date 2018-01-01 --start-idx 252 --step 10 --cost-bps 1
 
-# 5) leakage-safe calibration (anchor cut)
+# 5) leakage-safe calibration + position sizing
 python -m scripts.calibrate_probs --cut 2023-01-01 --sizing prob --prob-scale 0.06
 
-# 6) run dashboard
+# 6) dashboard
 streamlit run app/streamlit_app.py
----
+```
 
-**Artifacts of interest**
 
-* `data/processed/text_features.parquet` — daily FinBERT features
-* `data/processed/fusion_dataset.parquet` — model table
-* `data/processed/wf_*.parquet` — walk-forward predictions
-* `data/processed/wf_fused_cal.parquet` — calibrated live window (≥ cut)
-* `data/processed/curve_fused.parquet` — **dashboard curve**
+**Artifacts to look at**
 
----
+* `data/processed/fusion_dataset.parquet` (joined table)
+* `data/processed/wf_*.parquet` (walk-forward predictions)
+* `data/processed/wf_fused_cal.parquet` (calibrated window)
+* `data/processed/curve_*.parquet` (equity curves for the app)
+
+
 
 ## Modeling details
 
@@ -143,7 +197,7 @@ streamlit run app/streamlit_app.py
 * **Anchored isotonic calibration** : fit on a pre-defined *calibration window* (e.g., < 2023-01-01), apply to the live period only (no leakage).
 * **Position sizing:** probabilistic
 
-  post=clip(pt−0.5scale,0,1)\text{pos}_t=\text{clip}\Big(\frac{p_t-0.5}{\text{scale}}, 0, 1\Big)**pos**t****=**clip**(**scale**p**t****−**0.5****,**0**,**1**)
+  ![1757615921972](image/README/1757615921972.png)
   with scale ≈  **0.06** ; optional binary/hysteresis supported.
 * **Transaction costs:** default **1 bp** per trade; configurable.
 
@@ -152,18 +206,13 @@ streamlit run app/streamlit_app.py
 * Daily rebalancing with cost-aware turnover.
 * Report: Net Return, CAGR,  **Sharpe (net)** ,  **Max Drawdown** , trades, average turnover.
 
----
+## Results snapshot (illustrative)
 
-## Results (illustrative from recent runs)
+* Time-only (1 bp costs): Sharpe ~0.59, MaxDD ~-0.27
+* Fused (prob sizing + anchored calibration): Sharpe ~0.74–0.76, MaxDD ~-0.23
 
-| Setup                                                                | AUC              | Sharpe (net)         | MaxDD             | Trades    |
-| -------------------------------------------------------------------- | ---------------- | -------------------- | ----------------- | --------- |
-| Time-only (step=10, 1bp)                                             | ~0.512           | **0.59**       | −0.27            | ~580      |
-| **Fused**(step=10, 1bp, prob scale=0.06, anchored calibration) | **~0.516** | **0.74–0.76** | **~−0.23** | ~560–760 |
+Numbers vary slightly with each refresh; see the dashboard for current values.
 
-*Values vary slightly with data refresh; the dashboard shows the latest.*
-
----
 
 ## Dashboard
 
@@ -173,7 +222,6 @@ streamlit run app/streamlit_app.py
   </span></span></code></div></div></pre>
 * (Optional) Show current config by reading `data/processed/fused_config.json` in the app header.
 
----
 
 ## Automation (daily refresh)
 
@@ -189,7 +237,8 @@ Example cron entry (macOS):
 
 > macOS tip: if using cron, grant Full Disk Access to your terminal app. If your Mac sleeps at run time, consider `launchd`.
 
----
+
+
 
 ## Design choices & lessons
 
@@ -198,7 +247,6 @@ Example cron entry (macOS):
 * A modest **prob-scale** or **no-trade band/hysteresis** reduces churn and costs.
 * RSS gives *recent* text only; deeper archives should further improve coverage.
 
----
 
 ## Limitations
 
@@ -207,24 +255,12 @@ Example cron entry (macOS):
 * **Model class:** XGBoost baseline; sequence models (TFT, TCN, transformers) are future work.
 * **Live trading:** This is a  *research tool* , not a production trading system.
 
----
-
-## Roadmap
-
-* Add **archive scrapers** for full 2018→today text coverage.
-* Try **temporal models** (TFT/TCN) and **feature selection** with SHAP.
-* Regime-aware sizing (vol targeting, drawdown caps).
-* News/RSS expansion (Treasury, ISM, FOMC transcripts, SEC 10-K MD&A).
-* Cross-asset (rates, credit, FX, commodities) + sector/tilt overlays.
-
----
 
 ## Setup notes
 
 * Python 3.12, `xgboost`, `pandas`, `numpy`, `scikit-learn`, `transformers`, `streamlit`.
-* macOS tip: if using LightGBM you’ll need `libomp`; this project defaults to **XGBoost** to avoid that dependency.
+* macOS: if using LightGBM you’ll need `libomp`; this project defaults to **XGBoost** to avoid that dependency.
 
----
 
 ## Scripts cookbook
 
@@ -242,10 +278,9 @@ python -m scripts.train_baseline --min-date 2018-01-01 --start-idx 252 --step 10
 python -m scripts.calibrate_probs --</span><span>cut</span><span> 2023-01-01 --sizing prob --prob-scale 0.06
 
 </span><span># Dashboard</span><span>
-streamlit run app/streamlit_app.py
-</span></span></code></div></div></pre>
+streamlit run app/streamlit_app.py</span></span></code></div></div></pre>
 
----
+
 
 ## .gitignore (recommended)
 
@@ -256,13 +291,10 @@ data/raw/**
 data/processed/**
 mytexts/**
 !data/raw/.gitkeep
-!data/processed/.gitkeep
-</span></span></code></div></div></pre>
+!data/processed/.gitkeep</span></span></code></div></div></pre>
 
----
 
-## Disclaimer & License
 
-This repository is for **research and educational purposes only** and does **not** constitute investment advice or an offer to trade. Use at your own risk.
+## License
 
-License: MIT
+MIT
