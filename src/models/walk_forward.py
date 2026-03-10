@@ -64,5 +64,26 @@ def walk_forward(df: pd.DataFrame, start_idx: int = 252, step: int = 5, include_
     except Exception:
         auc = np.nan
     acc = accuracy_score(out["y"], out["signal"]) if len(out) else np.nan
-    out.attrs["metrics"] = {"AUC": float(auc), "Accuracy": float(acc), "Model": "XGBoost"}
+    pred = out["signal"] if len(out) else pd.Series(dtype=int)
+    tp = int(((pred == 1) & (out["y"] == 1)).sum()) if len(out) else 0
+    tn = int(((pred == 0) & (out["y"] == 0)).sum()) if len(out) else 0
+    fp = int(((pred == 1) & (out["y"] == 0)).sum()) if len(out) else 0
+    fn = int(((pred == 0) & (out["y"] == 1)).sum()) if len(out) else 0
+    out.attrs["metrics"] = {
+        "AUC": float(auc),
+        "Accuracy": float(acc),
+        "Model": "XGBoost",
+        "Threshold": float(threshold),
+        "P Mean": float(out["p"].mean()) if len(out) else float("nan"),
+        "P Std": float(out["p"].std(ddof=1)) if len(out) > 1 else float("nan"),
+        "P01": float(out["p"].quantile(0.01)) if len(out) else float("nan"),
+        "P05": float(out["p"].quantile(0.05)) if len(out) else float("nan"),
+        "P50": float(out["p"].quantile(0.50)) if len(out) else float("nan"),
+        "P95": float(out["p"].quantile(0.95)) if len(out) else float("nan"),
+        "P99": float(out["p"].quantile(0.99)) if len(out) else float("nan"),
+        "TP": tp,
+        "TN": tn,
+        "FP": fp,
+        "FN": fn,
+    }
     return out

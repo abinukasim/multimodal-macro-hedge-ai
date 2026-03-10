@@ -24,7 +24,9 @@ def build_fusion(market_df: pd.DataFrame, text_df: pd.DataFrame, fill_neutral: b
 
     X = m.merge(t, on="date", how="left")
 
-    X["y"] = (X["close"].shift(-1) > X["close"]).astype(int)
+    # Build next-day direction label; keep unknown last label as NaN so it is dropped.
+    next_close = X["close"].shift(-1)
+    X["y"] = np.where(next_close.notna(), (next_close > X["close"]).astype(int), np.nan)
 
     for col in ["finbert_neg", "finbert_neu", "finbert_pos"]:
         if col in X.columns and fill_neutral:
@@ -33,7 +35,8 @@ def build_fusion(market_df: pd.DataFrame, text_df: pd.DataFrame, fill_neutral: b
     for col in [c for c in X.columns if c.startswith("emb_")]:
         X[col] = X[col].fillna(0.0)
 
-    X = X.dropna(subset=["y"])
+    X = X.dropna(subset=["y"]).copy()
+    X["y"] = X["y"].astype(int)
     return X
 
 def save_fusion(X: pd.DataFrame, out_prefix: str = "data/processed/fusion_dataset"):
